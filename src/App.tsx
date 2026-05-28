@@ -38,7 +38,7 @@ import {
   set,
   update,
 } from "firebase/database";
-import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
+import { getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Stars } from "@react-three/drei";
 import { FormEvent, ReactElement, useEffect, useMemo, useRef, useState } from "react";
@@ -307,7 +307,7 @@ function TheaterRoom({ pulse, theme }: { pulse: number; theme: "luxury" | "horro
         <boxGeometry args={[9.8, 4.9, 0.26]} />
         <meshStandardMaterial color={themePalette.back} metalness={0.35} roughness={0.45} />
       </mesh>
-      <mesh ref={screenRef} position={[0, 1.7, -8.2]}>
+      <mesh ref={screenRef} position={[0, 1.7, -4.2]}>
         <boxGeometry args={[7.2, 3.2, 0.08]} />
         <meshStandardMaterial color="#90e8ff" emissive="#39cfff" />
       </mesh>
@@ -1507,6 +1507,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   const [searchNotice, setSearchNotice] = useState("");
   const [uploadedVideos, setUploadedVideos] = useState<RoomVideo[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [paperBursts, setPaperBursts] = useState<Array<{ id: string; actorUid: string; createdAt: number }>>([]);
   const [overlayPaperPieces, setOverlayPaperPieces] = useState<OverlayPaperPiece[]>([]);
   const [lastThrowAt, setLastThrowAt] = useState(0);
@@ -1619,7 +1620,7 @@ function WatchRoom({ me }: { me: AppUser }) {
       cheer: (import.meta.env.VITE_CROWD_CHEER_SOUND as string | undefined) || "/sounds/cheer.mp3",
       laugh: (import.meta.env.VITE_CROWD_LAUGH_SOUND as string | undefined) || "/sounds/laugh.mp3",
       scream: (import.meta.env.VITE_CROWD_SCREAM_SOUND as string | undefined) || "/sounds/scream.mp3",
-      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/whistle.mp3",
+      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/clap.mp3",
     } as const;
     const base = new Audio(map[type]);
     base.volume = 0.8;
@@ -1863,7 +1864,7 @@ function WatchRoom({ me }: { me: AppUser }) {
         else playerRef.current?.pauseVideo?.();
       }
     }
-  }, [roomState, me.uid]);
+  }, [roomState, me.uid, isSeeking]);
 
   useEffect(() => {
     if (!paperBursts.length) {
@@ -1917,7 +1918,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   }, [paperBursts, seatMapByUid]);
 
   useEffect(() => {
-    if (!roomId || !isHost || !playerRef.current || roomClosing) {
+    if (!roomId || !canControlPlayback || !playerRef.current || roomClosing) {
       return;
     }
 
@@ -1925,18 +1926,11 @@ function WatchRoom({ me }: { me: AppUser }) {
       const currentTime = playerRef.current?.getCurrentTime?.() || 0;
       const currentPlayback = playerRef.current?.getPlayerState?.() === 1 ? "playing" : "paused";
 
-      if (Math.abs(currentTime - hostPrevTimeRef.current) > 4) {
+      // If we are actively controlling/playing, broadcast periodic position updates
+      if (currentPlayback === "playing" || Math.abs(currentTime - hostPrevTimeRef.current) > 4) {
         update(ref(rtdb, `rooms/${roomId}`), {
           currentTimestamp: currentTime,
           playbackState: currentPlayback,
-          syncActorUid: me.uid,
-          syncEventId: `seek-${Date.now()}`,
-          updatedAtMs: Date.now(),
-          lastUpdated: rtdbServerTimestamp(),
-        });
-      } else {
-        update(ref(rtdb, `rooms/${roomId}`), {
-          currentTimestamp: currentTime,
           syncActorUid: me.uid,
           updatedAtMs: Date.now(),
           lastUpdated: rtdbServerTimestamp(),
@@ -1944,7 +1938,7 @@ function WatchRoom({ me }: { me: AppUser }) {
       }
       hostPrevTimeRef.current = currentTime;
 
-      if (Date.now() - lastFirestorePersistRef.current > 5000) {
+      if (isHost && Date.now() - lastFirestorePersistRef.current > 5000) {
         updateDoc(doc(db, "rooms", roomId), {
           currentTimestamp: currentTime,
           playbackState: currentPlayback,
@@ -1952,10 +1946,10 @@ function WatchRoom({ me }: { me: AppUser }) {
         }).catch(() => null);
         lastFirestorePersistRef.current = Date.now();
       }
-    }, 1000);
+    }, 1200);
 
     return () => window.clearInterval(timer);
-  }, [roomId, isHost, youtubeInput, roomClosing]);
+  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -2247,25 +2241,42 @@ function WatchRoom({ me }: { me: AppUser }) {
       return;
     }
     setUploadingVideo(true);
-    try {
-      const filePath = `roomUploads/${roomId}/${Date.now()}-${file.name}`;
-      const storagePath = storageRef(storage, filePath);
-      await uploadBytes(storagePath, file);
-      const url = await getDownloadURL(storagePath);
-      await addDoc(collection(db, "roomVideos"), {
-        roomId,
-        name: file.name,
-        url,
-        uploaderUid: me.uid,
-        uploaderName: me.username,
-        createdAt: serverTimestamp(),
-      });
-      pushToast("Video uploaded successfully.", "success");
-    } catch {
-      pushToast("Video upload failed.", "error");
-    } finally {
-      setUploadingVideo(false);
-    }
+    setUploadProgress(0);
+
+    const filePath = `roomUploads/${roomId}/${Date.now()}-${file.name}`;
+    const storagePath = storageRef(storage, filePath);
+    const uploadTask = uploadBytesResumable(storagePath, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        setUploadProgress(progress);
+      },
+      (error) => {
+        pushToast(`Video upload failed: ${error.message}`, "error");
+        setUploadingVideo(false);
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await addDoc(collection(db, "roomVideos"), {
+            roomId,
+            name: file.name,
+            url,
+            uploaderUid: me.uid,
+            uploaderName: me.username,
+            createdAt: serverTimestamp(),
+          });
+          pushToast("Video uploaded successfully.", "success");
+        } catch {
+          pushToast("Could not save video info.", "error");
+        } finally {
+          setUploadingVideo(false);
+          setUploadProgress(0);
+        }
+      }
+    );
   };
 
   const selectUploadedVideo = async (video: RoomVideo) => {
@@ -2371,7 +2382,7 @@ function WatchRoom({ me }: { me: AppUser }) {
             <TheaterRoom pulse={theaterPulse} theme={theatreTheme} />
             <TheaterRoomAvatars participants={orderedParticipants} hostId={roomDoc?.hostId} />
             <PaperBurstsLayer bursts={paperBursts} seatMap={seatMapByUid} />
-            <Html transform position={[-1.50, 1.7, -8.0]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
+            <Html transform position={[0, 1.7, -4.35]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
               <div className="pointer-events-none w-[760px] overflow-hidden border border-cyan-200/40 shadow-[0_0_30px_rgba(57,207,255,0.3)]">
                 {currentSource === "upload" ? (
                   <video
@@ -2593,7 +2604,7 @@ function WatchRoom({ me }: { me: AppUser }) {
               onClick={() => triggerCrowdReaction("clap")}
               className="rounded-full border border-amber-200/40 bg-amber-300/25 px-5 py-3 text-sm font-semibold tracking-wide text-amber-50 shadow-[0_0_22px_rgba(255,216,120,0.3)] backdrop-blur-md transition hover:scale-105"
             >
-              WHISTLE
+              CLAP
             </button>
           </div>
 
@@ -2990,8 +3001,8 @@ function WatchRoom({ me }: { me: AppUser }) {
             <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-white/70">Uploaded Room Videos</p>
-                <label className="cursor-pointer rounded-full bg-white/15 px-3 py-1 text-xs">
-                  {uploadingVideo ? "Uploading..." : "Upload Video"}
+                <label className={`rounded-full px-3 py-1 text-xs ${uploadingVideo ? "bg-cyan-400/20 text-cyan-200" : "cursor-pointer bg-white/15"}`}>
+                  {uploadingVideo ? `Uploading... ${uploadProgress}%` : "Upload Video"}
                   <input
                     type="file"
                     accept="video/mp4,video/webm,video/ogg"
