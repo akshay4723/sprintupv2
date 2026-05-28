@@ -307,7 +307,7 @@ function TheaterRoom({ pulse, theme }: { pulse: number; theme: "luxury" | "horro
         <boxGeometry args={[9.8, 4.9, 0.26]} />
         <meshStandardMaterial color={themePalette.back} metalness={0.35} roughness={0.45} />
       </mesh>
-      <mesh ref={screenRef} position={[0, 1.7, -6.2]}>
+      <mesh ref={screenRef} position={[0, 1.7, -8.2]}>
         <boxGeometry args={[7.2, 3.2, 0.08]} />
         <meshStandardMaterial color="#90e8ff" emissive="#39cfff" />
       </mesh>
@@ -1014,6 +1014,7 @@ function Dashboard({ me }: { me: AppUser }) {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="mb-1 flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-cyan-300 text-xs font-bold text-[#04131c]">GZ</div>
               <p className="text-sm tracking-[0.25em] text-cyan-300">GOLDEN Z VISION</p>
             </div>
             <h1 className="text-3xl font-semibold">Dashboard</h1>
@@ -1588,14 +1589,14 @@ function WatchRoom({ me }: { me: AppUser }) {
     const localTime = player.getCurrentTime?.() || 0;
     const drift = Math.abs(remoteTime - localTime);
 
-    if (forceSeek || drift > 0.75) {
+    if (forceSeek || drift > 1.2) {
       setSyncing(true);
       suppressStateRef.current = true;
       player.seekTo?.(remoteTime, true);
       window.setTimeout(() => {
         suppressStateRef.current = false;
         setSyncing(false);
-      }, 650);
+      }, 800);
     }
 
     if (roomState.playbackState === "playing") {
@@ -1618,7 +1619,7 @@ function WatchRoom({ me }: { me: AppUser }) {
       cheer: (import.meta.env.VITE_CROWD_CHEER_SOUND as string | undefined) || "/sounds/cheer.mp3",
       laugh: (import.meta.env.VITE_CROWD_LAUGH_SOUND as string | undefined) || "/sounds/laugh.mp3",
       scream: (import.meta.env.VITE_CROWD_SCREAM_SOUND as string | undefined) || "/sounds/scream.mp3",
-      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/whistle.mp3",
+      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/clap.mp3",
     } as const;
     const base = new Audio(map[type]);
     base.volume = 0.8;
@@ -1852,6 +1853,14 @@ function WatchRoom({ me }: { me: AppUser }) {
       syncPlayerToRoomState(eventChanged);
       if (roomState.syncEventId) {
         appliedEventRef.current = roomState.syncEventId;
+      }
+    } else if (!isSeeking) {
+      // Periodic self-correction if host/actor gets out of state locally
+      const expected = roomState.playbackState === "playing" ? 1 : 2;
+      const current = playerRef.current?.getPlayerState?.() || 2;
+      if (expected !== current) {
+        if (expected === 1) playerRef.current?.playVideo?.();
+        else playerRef.current?.pauseVideo?.();
       }
     }
   }, [roomState, me.uid]);
@@ -2357,12 +2366,12 @@ function WatchRoom({ me }: { me: AppUser }) {
         <PaperOverlay pieces={overlayPaperPieces} />
 
         <div className="absolute inset-0">
-          <Canvas camera={{ position: [0, 1.8, 6], fov: 60 }}>
+          <Canvas camera={{ position: [0, 1.8, 6], fov: 52 }}>
             <TheaterViewerCamera seatIndex={mySeatIndex} />
             <TheaterRoom pulse={theaterPulse} theme={theatreTheme} />
             <TheaterRoomAvatars participants={orderedParticipants} hostId={roomDoc?.hostId} />
             <PaperBurstsLayer bursts={paperBursts} seatMap={seatMapByUid} />
-            <Html transform position={[0, 1.7, -5.35]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
+            <Html transform position={[-1.50, 1.7, -8.0]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
               <div className="pointer-events-none w-[760px] overflow-hidden border border-cyan-200/40 shadow-[0_0_30px_rgba(57,207,255,0.3)]">
                 {currentSource === "upload" ? (
                   <video
@@ -2547,7 +2556,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                   setTimelineTime(target);
                   setIsSeeking(false);
                   if (playerRef.current) {
-                    playerRef.current.seekTo(target, true);
+                    playerRef.current.seekTo?.(target, true);
                   }
                   if (canSeekTimeline) {
                     await pushPlayback({ currentTimestamp: target });
@@ -2584,7 +2593,7 @@ function WatchRoom({ me }: { me: AppUser }) {
               onClick={() => triggerCrowdReaction("clap")}
               className="rounded-full border border-amber-200/40 bg-amber-300/25 px-5 py-3 text-sm font-semibold tracking-wide text-amber-50 shadow-[0_0_22px_rgba(255,216,120,0.3)] backdrop-blur-md transition hover:scale-105"
             >
-              WHISTLE
+              CLAP
             </button>
           </div>
 
