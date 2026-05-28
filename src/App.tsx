@@ -1551,7 +1551,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   const coHosts = roomState?.coHosts || roomDoc?.coHosts || [];
   const moderators = roomState?.moderators || roomDoc?.moderators || [];
   const controllers = roomState?.controllers || roomDoc?.controllers || [];
-  const canControlPlayback = isHost || coHosts.includes(me.uid) || controllers.includes(me.uid);
+  const canControlPlayback = isHost || coHosts.includes(me.uid) || controllers.includes(me.uid) || moderators.includes(me.uid);
   const canSeekTimeline = isHost || coHosts.includes(me.uid) || moderators.includes(me.uid);
   const canLoadVideo = isHost || coHosts.includes(me.uid);
   const canManageRoles = isHost;
@@ -1926,8 +1926,11 @@ function WatchRoom({ me }: { me: AppUser }) {
       const currentTime = playerRef.current?.getCurrentTime?.() || 0;
       const currentPlayback = playerRef.current?.getPlayerState?.() === 1 ? "playing" : "paused";
 
-      // If we are actively controlling/playing, broadcast periodic position updates
-      if (currentPlayback === "playing" || Math.abs(currentTime - hostPrevTimeRef.current) > 4) {
+      // Only the active sync actor (or the host if no one has claimed it) should broadcast periodic heartbeats
+      // This completely eliminates the multi-broadcaster race condition where two controllers fight over the timeline
+      const isActiveActor = roomState?.syncActorUid === me.uid || (isHost && !roomState?.syncActorUid);
+
+      if (isActiveActor && (currentPlayback === "playing" || Math.abs(currentTime - hostPrevTimeRef.current) > 4)) {
         update(ref(rtdb, `rooms/${roomId}`), {
           currentTimestamp: currentTime,
           playbackState: currentPlayback,
@@ -1949,7 +1952,7 @@ function WatchRoom({ me }: { me: AppUser }) {
     }, 1200);
 
     return () => window.clearInterval(timer);
-  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing]);
+  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing, roomState?.syncActorUid, me.uid]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
