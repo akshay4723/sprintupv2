@@ -2064,13 +2064,12 @@ function WatchRoom({ me }: { me: AppUser }) {
     if (!canChangeTimeline && patch.currentTimestamp !== undefined) {
       return;
     }
-    const currentTime = playerRef.current.getCurrentTime?.() || 0;
-    const targetTimestamp = typeof patch.currentTimestamp === "number" ? patch.currentTimestamp : currentTime;
+
     const nextPlaybackState = String(patch.playbackState ?? (playerRef.current?.getPlayerState?.() === 1 ? "playing" : "paused"));
 
     // Apply local intent immediately for responsive controls before network roundtrip.
     if (patch.currentTimestamp !== undefined) {
-      playerRef.current.seekTo?.(targetTimestamp, true);
+      playerRef.current.seekTo?.(Number(patch.currentTimestamp), true);
     }
     if (nextPlaybackState === "playing") {
       playerRef.current.playVideo?.();
@@ -2079,23 +2078,38 @@ function WatchRoom({ me }: { me: AppUser }) {
     }
 
     const syncEventId = `${Date.now()}-${Math.round(Math.random() * 1e5)}`;
-    await update(ref(rtdb, `rooms/${roomId}`), {
+
+    // Prepare the exact fields to update in the Realtime Database
+    const rtdbUpdate: Record<string, unknown> = {
       ...patch,
-      currentTimestamp: targetTimestamp,
       syncActorUid: me.uid,
       syncEventId,
       updatedAtMs: Date.now(),
       lastUpdated: rtdbServerTimestamp(),
-    });
+    };
 
-    await updateDoc(doc(db, "rooms", roomId), {
-      currentTimestamp: Number(targetTimestamp),
+    // Only include currentTimestamp if it was explicitly passed in the patch.
+    // This prevents the YouTube player from reporting 0 during the pre-seek buffering phase
+    // and resetting the entire room back to the start!
+    if (patch.currentTimestamp !== undefined) {
+      rtdbUpdate.currentTimestamp = patch.currentTimestamp;
+    }
+
+    await update(ref(rtdb, `rooms/${roomId}`), rtdbUpdate);
+
+    const firestoreUpdate: Record<string, unknown> = {
       playbackState: nextPlaybackState,
       currentVideo: String(patch.currentVideo ?? roomState?.currentVideo ?? extractVideoId(youtubeInput)),
       currentSource: String(patch.currentSource ?? roomState?.currentSource ?? "youtube"),
       currentVideoUrl: String(patch.currentVideoUrl ?? roomState?.currentVideoUrl ?? ""),
       currentVideoTitle: String(patch.currentVideoTitle ?? roomState?.currentVideoTitle ?? ""),
-    }).catch(() => null);
+    };
+
+    if (patch.currentTimestamp !== undefined) {
+      firestoreUpdate.currentTimestamp = Number(patch.currentTimestamp);
+    }
+
+    await updateDoc(doc(db, "rooms", roomId), firestoreUpdate).catch(() => null);
   };
 
   const closeRoom = async () => {
