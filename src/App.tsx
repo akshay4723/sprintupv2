@@ -1619,7 +1619,7 @@ function WatchRoom({ me }: { me: AppUser }) {
       cheer: (import.meta.env.VITE_CROWD_CHEER_SOUND as string | undefined) || "/sounds/cheer.mp3",
       laugh: (import.meta.env.VITE_CROWD_LAUGH_SOUND as string | undefined) || "/sounds/laugh.mp3",
       scream: (import.meta.env.VITE_CROWD_SCREAM_SOUND as string | undefined) || "/sounds/scream.mp3",
-      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/clap.mp3",
+      clap: (import.meta.env.VITE_CROWD_CLAP_SOUND as string | undefined) || "/sounds/whistle.mp3",
     } as const;
     const base = new Audio(map[type]);
     base.volume = 0.8;
@@ -2593,7 +2593,7 @@ function WatchRoom({ me }: { me: AppUser }) {
               onClick={() => triggerCrowdReaction("clap")}
               className="rounded-full border border-amber-200/40 bg-amber-300/25 px-5 py-3 text-sm font-semibold tracking-wide text-amber-50 shadow-[0_0_22px_rgba(255,216,120,0.3)] backdrop-blur-md transition hover:scale-105"
             >
-              CLAP
+              WHISTLE
             </button>
           </div>
 
