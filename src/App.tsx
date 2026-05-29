@@ -2581,7 +2581,8 @@ function WatchRoom({ me }: { me: AppUser }) {
                 onClick={async () => {
                   if (playerRef.current) {
                     hostHasInitiallySyncedRef.current = true;
-                    const currentTime = playerRef.current.getCurrentTime?.() || 0;
+                    const currentTime = timelineTime || playerRef.current.getCurrentTime?.() || 0;
+                    playerRef.current.seekTo?.(currentTime, true);
                     await pushPlayback({ currentTimestamp: currentTime });
                     pushToast("Synced everyone's timeline to you.", "success");
                   }
@@ -2920,7 +2921,8 @@ function WatchRoom({ me }: { me: AppUser }) {
                   onClick={async () => {
                     if (playerRef.current) {
                       hostHasInitiallySyncedRef.current = true;
-                      const currentTime = playerRef.current.getCurrentTime?.() || 0;
+                      const currentTime = timelineTime || playerRef.current.getCurrentTime?.() || 0;
+                      playerRef.current.seekTo?.(currentTime, true);
                       await pushPlayback({ currentTimestamp: currentTime });
                       pushToast("Synced everyone's timeline to you.", "success");
                     }
