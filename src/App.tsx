@@ -1548,6 +1548,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   const accessCheckedRef = useRef(false);
   const hostPrevTimeRef = useRef<number>(0);
   const lastFirestorePersistRef = useRef<number>(0);
+  const hostHasInitiallySyncedRef = useRef(false);
   const isHostRef = useRef(false);
   const participantIdsRef = useRef<string[]>([]);
 
@@ -1960,6 +1961,16 @@ function WatchRoom({ me }: { me: AppUser }) {
       const isActiveActor = roomState?.syncActorUid === me.uid || (isHost && !roomState?.syncActorUid);
 
       if (isActiveActor && (currentPlayback === "playing" || Math.abs(currentTime - hostPrevTimeRef.current) > 4)) {
+        if (!hostHasInitiallySyncedRef.current) {
+          hostHasInitiallySyncedRef.current = true;
+          const remoteTime = Number(roomState?.currentTimestamp || 0);
+          if (remoteTime > 0) {
+            // If time is present in the room, move to the proper time in the timeline first!
+            playerRef.current?.seekTo?.(remoteTime, true);
+            return;
+          }
+        }
+
         update(ref(rtdb, `rooms/${roomId}`), {
           currentTimestamp: currentTime,
           playbackState: currentPlayback,
@@ -1981,7 +1992,7 @@ function WatchRoom({ me }: { me: AppUser }) {
     }, 1200);
 
     return () => window.clearInterval(timer);
-  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing, roomState?.syncActorUid, me.uid]);
+  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing, roomState?.syncActorUid, roomState?.currentTimestamp, me.uid]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -2581,6 +2592,7 @@ function WatchRoom({ me }: { me: AppUser }) {
               <button
                 onClick={async () => {
                   if (playerRef.current) {
+                    hostHasInitiallySyncedRef.current = true;
                     const currentTime = playerRef.current.getCurrentTime?.() || 0;
                     await pushPlayback({ currentTimestamp: currentTime });
                     pushToast("Synced everyone's timeline to you.", "success");
@@ -2919,6 +2931,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                 <button
                   onClick={async () => {
                     if (playerRef.current) {
+                      hostHasInitiallySyncedRef.current = true;
                       const currentTime = playerRef.current.getCurrentTime?.() || 0;
                       await pushPlayback({ currentTimestamp: currentTime });
                       pushToast("Synced everyone's timeline to you.", "success");
