@@ -1850,6 +1850,19 @@ function WatchRoom({ me }: { me: AppUser }) {
       if (roomState.syncEventId) {
         appliedEventRef.current = roomState.syncEventId;
       }
+
+      // If a participant updated the room, the host immediately adopts the change and reclaims the
+      // primary sync actor role. This ensures the host's timeline perfectly updates in Firebase
+      // and remains the absolute, stable source of truth for all other participants!
+      if (isHost) {
+        const currentTime = playerRef.current.getCurrentTime?.() || Number(roomState.currentTimestamp);
+        update(ref(rtdb, `rooms/${roomId}`), {
+          currentTimestamp: currentTime,
+          syncActorUid: me.uid,
+          updatedAtMs: Date.now(),
+          lastUpdated: rtdbServerTimestamp(),
+        }).catch(() => null);
+      }
     } else if (!isSeeking) {
       // Periodic self-correction if host/actor gets out of state locally
       const expected = roomState.playbackState === "playing" ? 1 : 2;
@@ -1859,7 +1872,7 @@ function WatchRoom({ me }: { me: AppUser }) {
         else playerRef.current?.pauseVideo?.();
       }
     }
-  }, [roomState, me.uid, isSeeking]);
+  }, [roomState, me.uid, isSeeking, isHost, roomId]);
 
   useEffect(() => {
     if (!paperBursts.length) {
