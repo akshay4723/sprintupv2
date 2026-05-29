@@ -1872,6 +1872,19 @@ function WatchRoom({ me }: { me: AppUser }) {
       if (roomState.syncEventId) {
         appliedEventRef.current = roomState.syncEventId;
       }
+
+      // If a participant updated the room, the host immediately adopts the change and reclaims the
+      // primary sync actor role. This ensures the host's timeline perfectly updates in Firebase
+      // and remains the absolute, stable source of truth for all other participants!
+      if (isHost) {
+        const currentTime = playerRef.current.getCurrentTime?.() || Number(roomState.currentTimestamp);
+        update(ref(rtdb, `rooms/${roomId}`), {
+          currentTimestamp: currentTime,
+          syncActorUid: me.uid,
+          updatedAtMs: Date.now(),
+          lastUpdated: rtdbServerTimestamp(),
+        }).catch(() => null);
+      }
     } else if (!isSeeking) {
       // Periodic self-correction if host/actor gets out of state locally
       const expected = roomState.playbackState === "playing" ? 1 : 2;
@@ -1943,29 +1956,16 @@ function WatchRoom({ me }: { me: AppUser }) {
       const currentTime = playerRef.current?.getCurrentTime?.() || 0;
       const currentPlayback = playerRef.current?.getPlayerState?.() === 1 ? "playing" : "paused";
 
-      // Only the active sync actor (or the host if no one has claimed it) should broadcast periodic heartbeats
-      // This completely eliminates the multi-broadcaster race condition where two controllers fight over the timeline
-      const isActiveActor = roomState?.syncActorUid === me.uid || (isHost && !roomState?.syncActorUid);
-
-      if (isActiveActor && (currentPlayback === "playing" || Math.abs(currentTime - hostPrevTimeRef.current) > 4)) {
-        if (!hostHasInitiallySyncedRef.current) {
-          hostHasInitiallySyncedRef.current = true;
-          const remoteTime = Number(roomState?.currentTimestamp || 0);
-          if (remoteTime > 0) {
-            // If time is present in the room, move to the proper time in the timeline first!
-            playerRef.current?.seekTo?.(remoteTime, true);
-            return;
-          }
+      if (!hostHasInitiallySyncedRef.current) {
+        hostHasInitiallySyncedRef.current = true;
+        const remoteTime = Number(roomState?.currentTimestamp || 0);
+        if (remoteTime > 0) {
+          // If time is present in the room, move to the proper time in the timeline first!
+          playerRef.current?.seekTo?.(remoteTime, true);
+          return;
         }
-
-        update(ref(rtdb, `rooms/${roomId}`), {
-          currentTimestamp: currentTime,
-          playbackState: currentPlayback,
-          syncActorUid: me.uid,
-          updatedAtMs: Date.now(),
-          lastUpdated: rtdbServerTimestamp(),
-        });
       }
+
       hostPrevTimeRef.current = currentTime;
 
       if (isHost && Date.now() - lastFirestorePersistRef.current > 5000) {
@@ -1979,7 +1979,7 @@ function WatchRoom({ me }: { me: AppUser }) {
     }, 1200);
 
     return () => window.clearInterval(timer);
-  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing, roomState?.syncActorUid, roomState?.currentTimestamp, me.uid]);
+  }, [roomId, canControlPlayback, isHost, youtubeInput, roomClosing, roomState?.currentTimestamp]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -2107,11 +2107,12 @@ function WatchRoom({ me }: { me: AppUser }) {
       lastUpdated: rtdbServerTimestamp(),
     };
 
-    // Only include currentTimestamp if it was explicitly passed in the patch.
-    // This prevents the YouTube player from reporting 0 during the pre-seek buffering phase
-    // and resetting the entire room back to the start!
+    // Always ensure the current timestamp is correctly paired with the new updatedAtMs anchor!
+    // If not explicitly provided in the patch, grab the fully settled current time directly from the player.
     if (patch.currentTimestamp !== undefined) {
       rtdbUpdate.currentTimestamp = patch.currentTimestamp;
+    } else {
+      rtdbUpdate.currentTimestamp = playerRef.current?.getCurrentTime?.() || 0;
     }
 
     await update(ref(rtdb, `rooms/${roomId}`), rtdbUpdate);
