@@ -371,39 +371,60 @@ function TheaterViewerCamera({ seatIndex }: { seatIndex: number }) {
   }, [camera, seatIndex]);
 
   useEffect(() => {
-    const onDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
+    const handleStart = (clientX: number, clientY: number, target: HTMLElement | null) => {
       if (target?.closest("[data-ui-overlay='true']")) {
         return;
       }
       draggingRef.current = true;
-      lastXRef.current = event.clientX;
-      lastYRef.current = event.clientY;
+      lastXRef.current = clientX;
+      lastYRef.current = clientY;
     };
-    const onUp = () => {
-      draggingRef.current = false;
-    };
-    const onMove = (event: MouseEvent) => {
+
+    const handleMove = (clientX: number, clientY: number) => {
       if (!draggingRef.current) {
         return;
       }
-      const dx = event.clientX - lastXRef.current;
-      const dy = event.clientY - lastYRef.current;
-      lastXRef.current = event.clientX;
-      lastYRef.current = event.clientY;
+      const dx = clientX - lastXRef.current;
+      const dy = clientY - lastYRef.current;
+      lastXRef.current = clientX;
+      lastYRef.current = clientY;
       yawRef.current -= dx * 0.003;
       pitchRef.current -= dy * 0.0026;
       pitchRef.current = Math.max(-0.55, Math.min(0.42, pitchRef.current));
     };
 
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("mousemove", onMove);
+    const onMouseDown = (event: MouseEvent) => handleStart(event.clientX, event.clientY, event.target as HTMLElement | null);
+    const onMouseMove = (event: MouseEvent) => handleMove(event.clientX, event.clientY);
+    const onMouseUp = () => { draggingRef.current = false; };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches[0]) {
+        handleStart(event.touches[0].clientX, event.touches[0].clientY, event.target as HTMLElement | null);
+      }
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (event.touches[0]) {
+        handleMove(event.touches[0].clientX, event.touches[0].clientY);
+      }
+    };
+    const onTouchEnd = () => { draggingRef.current = false; };
+
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", onMouseMove);
+
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
 
     return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mousemove", onMouseMove);
+
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchmove", onTouchMove);
     };
   }, []);
 
@@ -2389,6 +2410,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                     src={currentVideoUrl}
                     className="h-[340px] w-[760px] bg-black object-contain"
                     ref={bindHtmlVideoPlayer}
+                    playsInline
                     onLoadedMetadata={(event) => {
                       bindHtmlVideoPlayer(event.currentTarget);
                       setVideoDuration(event.currentTarget.duration || 0);
@@ -2419,6 +2441,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                         iv_load_policy: 3,
                         fs: 0,
                         disablekb: 1,
+                        playsinline: 1,
                       },
                     }}
                     onReady={(event) => {
@@ -2776,6 +2799,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                     src={currentVideoUrl}
                     className="h-[420px] w-full bg-black object-contain"
                     ref={bindHtmlVideoPlayer}
+                    playsInline
                     onLoadedMetadata={(event) => {
                       bindHtmlVideoPlayer(event.currentTarget);
                       setVideoDuration(event.currentTarget.duration || 0);
@@ -2806,6 +2830,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                         iv_load_policy: 3,
                         fs: 0,
                         disablekb: 1,
+                        playsinline: 1,
                       },
                     }}
                     onReady={(event) => {
