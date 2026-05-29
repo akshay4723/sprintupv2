@@ -946,8 +946,8 @@ function Dashboard({ me }: { me: AppUser }) {
         }
       }
 
-      await updateDoc(roomRef, { participants: arrayUnion(me.uid) });
-      await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(targetRoomId) });
+      await updateDoc(roomRef, { participants: arrayUnion(me.uid) }).catch(() => null);
+      await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(targetRoomId) }).catch(() => null);
       setDashboardNotice("Joining room...");
       pushToast("Joining room...", "success");
       setJoinRoomId(targetRoomId);
@@ -1319,8 +1319,8 @@ function RecentRoomsPage({ me }: { me: AppUser }) {
           return;
         }
       }
-      await updateDoc(roomRef, { participants: arrayUnion(me.uid) });
-      await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(roomId) });
+      await updateDoc(roomRef, { participants: arrayUnion(me.uid) }).catch(() => null);
+      await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(roomId) }).catch(() => null);
       navigate(`/room/${roomId}`);
     } finally {
       setJoiningRoomId("");
@@ -1519,7 +1519,6 @@ function WatchRoom({ me }: { me: AppUser }) {
   const [timelineTime, setTimelineTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
-  const [selectedParticipantUid, setSelectedParticipantUid] = useState("");
   const navigate = useNavigate();
   const playerRef = useRef<any>(null);
   const appliedEventRef = useRef<string>("");
@@ -1548,14 +1547,10 @@ function WatchRoom({ me }: { me: AppUser }) {
   const theatreTheme = roomState?.theatreTheme || roomDoc?.theatreTheme || "cyberpunk";
   const currentSource = roomState?.currentSource || "youtube";
   const currentVideoUrl = roomState?.currentVideoUrl || "";
-  const coHosts = roomState?.coHosts || roomDoc?.coHosts || [];
-  const moderators = roomState?.moderators || roomDoc?.moderators || [];
-  const controllers = roomState?.controllers || roomDoc?.controllers || [];
-  const canControlPlayback = isHost || coHosts.includes(me.uid) || controllers.includes(me.uid) || moderators.includes(me.uid);
-  const canSeekTimeline = isHost || coHosts.includes(me.uid) || moderators.includes(me.uid);
-  const canLoadVideo = isHost || coHosts.includes(me.uid);
-  const canManageRoles = isHost;
-  const canEditSubtitles = isHost || coHosts.includes(me.uid) || moderators.includes(me.uid);
+  const canControlPlayback = true;
+  const canSeekTimeline = true;
+  const canLoadVideo = true;
+  const canEditSubtitles = true;
   const theaterPulse = useMemo(() => 0.6 + Math.sin(Date.now() / 700) * 0.3, [roomState?.updatedAtMs]);
   const seatMapByUid = useMemo(() => {
     const map: Record<string, { x: number; z: number }> = {};
@@ -1661,8 +1656,8 @@ function WatchRoom({ me }: { me: AppUser }) {
             }
           }
         }
-        await updateDoc(roomDocRef, { participants: arrayUnion(me.uid) });
-        await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(roomId) });
+        await updateDoc(roomDocRef, { participants: arrayUnion(me.uid) }).catch(() => null);
+        await updateDoc(doc(db, "users", me.uid), { joinedRooms: arrayUnion(roomId) }).catch(() => null);
       }
 
       const roomStateRef = ref(rtdb, `rooms/${roomId}`);
@@ -2056,14 +2051,6 @@ function WatchRoom({ me }: { me: AppUser }) {
     if (!canControlPlayback || !roomId || !playerRef.current || roomClosing) {
       return;
     }
-    const canChangeVideo = isHost || coHosts.includes(me.uid);
-    const canChangeTimeline = isHost || coHosts.includes(me.uid) || moderators.includes(me.uid);
-    if (!canChangeVideo && patch.currentVideo !== undefined) {
-      return;
-    }
-    if (!canChangeTimeline && patch.currentTimestamp !== undefined) {
-      return;
-    }
 
     const nextPlaybackState = String(patch.playbackState ?? (playerRef.current?.getPlayerState?.() === 1 ? "playing" : "paused"));
 
@@ -2158,34 +2145,7 @@ function WatchRoom({ me }: { me: AppUser }) {
     pushToast(`${participantName} was removed.`, "success");
   };
 
-  const updateRole = async (participantUid: string, role: "controllers" | "coHosts" | "moderators") => {
-    if (!roomId || !canManageRoles || participantUid === me.uid) {
-      return;
-    }
-    const current = roomDoc?.[role] || [];
-    const hasRole = current.includes(participantUid);
-    await updateDoc(doc(db, "rooms", roomId), {
-      [role]: hasRole ? arrayRemove(participantUid) : arrayUnion(participantUid),
-    });
-    await update(ref(rtdb, `rooms/${roomId}`), {
-      [role]: hasRole ? current.filter((uid) => uid !== participantUid) : [...current, participantUid],
-      updatedAtMs: Date.now(),
-    });
-    pushToast(hasRole ? `Removed ${role} permission.` : `Granted ${role} permission.`, "success");
-  };
 
-  const transferHost = async (participantUid: string, participantName: string) => {
-    if (!roomId || !isHost || participantUid === me.uid) {
-      return;
-    }
-    const confirmTransfer = window.confirm(`Transfer host control to ${participantName}?`);
-    if (!confirmTransfer) {
-      return;
-    }
-    await updateDoc(doc(db, "rooms", roomId), { hostId: participantUid });
-    await update(ref(rtdb, `rooms/${roomId}`), { hostId: participantUid, updatedAtMs: Date.now() });
-    pushToast(`Host transferred to ${participantName}.`, "success");
-  };
 
   const syncSubtitle = async () => {
     if (!roomId || !canEditSubtitles) {
@@ -2253,8 +2213,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   };
 
   const uploadRoomVideo = async (file: File) => {
-    if (!roomId || !(isHost || coHosts.includes(me.uid))) {
-      pushToast("Only host or co-host can upload room videos.", "error");
+    if (!roomId) {
       return;
     }
     setUploadingVideo(true);
@@ -2728,48 +2687,20 @@ function WatchRoom({ me }: { me: AppUser }) {
                {Object.values(roomState?.participants || {}).map((participant) => (
                 <div
                   key={participant.uid}
-                  className="relative flex items-center justify-between rounded-xl bg-black/30 px-3 py-2"
-                  onClick={() => {
-                    if (canManageRoles && participant.uid !== me.uid) {
-                      setSelectedParticipantUid((prev) => (prev === participant.uid ? "" : participant.uid));
-                    }
-                  }}
+                  className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2"
                 >
-                  <span className="cursor-pointer">{participant.username}</span>
+                  <span>{participant.username}</span>
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    {coHosts.includes(participant.uid) && <span className="rounded-full bg-cyan-300/20 px-2 py-0.5 text-[10px] text-cyan-200">Co-host</span>}
-                    {moderators.includes(participant.uid) && <span className="rounded-full bg-violet-300/20 px-2 py-0.5 text-[10px] text-violet-200">Mod</span>}
-                    {controllers.includes(participant.uid) && <span className="rounded-full bg-amber-300/20 px-2 py-0.5 text-[10px] text-amber-100">Control</span>}
                     {isHost && participant.uid !== me.uid && (
                       <button
                         className="rounded-full bg-rose-400/80 px-2 py-0.5 text-[11px] text-[#1b0409]"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          removeParticipant(participant.uid, participant.username);
-                        }}
+                        onClick={() => removeParticipant(participant.uid, participant.username)}
                       >
                         Remove
                       </button>
                     )}
                   </div>
-
-                  {canManageRoles && selectedParticipantUid === participant.uid && participant.uid !== me.uid && (
-                    <div className="absolute right-2 top-[calc(100%+6px)] z-20 w-44 space-y-1 rounded-xl border border-white/15 bg-[#0a0e18] p-2 text-xs shadow-xl">
-                      <button className="w-full rounded-md bg-white/10 px-2 py-1 text-left" onClick={() => updateRole(participant.uid, "controllers")}>
-                        Toggle Play/Pause
-                      </button>
-                      <button className="w-full rounded-md bg-white/10 px-2 py-1 text-left" onClick={() => updateRole(participant.uid, "coHosts")}>
-                        Toggle Co-host
-                      </button>
-                      <button className="w-full rounded-md bg-white/10 px-2 py-1 text-left" onClick={() => updateRole(participant.uid, "moderators")}>
-                        Toggle Moderator
-                      </button>
-                      <button className="w-full rounded-md bg-indigo-400/80 px-2 py-1 text-left text-[#1a082f]" onClick={() => transferHost(participant.uid, participant.username)}>
-                        Make Host
-                      </button>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
