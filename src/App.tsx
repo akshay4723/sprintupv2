@@ -2346,6 +2346,17 @@ function WatchRoom({ me }: { me: AppUser }) {
     return <Navigate to="/dashboard" replace />;
   }
 
+  if (!roomDoc || !roomState) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#03050b] text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-cyan-300 border-t-transparent" />
+          <p className="text-sm text-white/70">Connecting to room...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (roomMode === "theater") {
     return (
       <div className="relative h-screen w-full overflow-hidden bg-[#010208] text-white">
@@ -2530,6 +2541,19 @@ function WatchRoom({ me }: { me: AppUser }) {
                 disabled={!canControlPlayback || roomClosing}
               >
                 Pause
+              </button>
+              <button
+                onClick={async () => {
+                  if (playerRef.current) {
+                    const currentTime = playerRef.current.getCurrentTime?.() || 0;
+                    await pushPlayback({ currentTimestamp: currentTime });
+                    pushToast("Synced everyone's timeline to you.", "success");
+                  }
+                }}
+                className="rounded-full border border-cyan-200/40 bg-cyan-400/20 px-4 py-1.5 text-xs text-cyan-200 transition hover:bg-cyan-400/30"
+                disabled={!canSeekTimeline || roomClosing}
+              >
+                Sync Timeline
               </button>
               <input
                 type="range"
@@ -2849,8 +2873,24 @@ function WatchRoom({ me }: { me: AppUser }) {
 
             <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
               <div className="flex items-center justify-between text-xs text-white/70">
-                <span>{formatClock(timelineTime)}</span>
-                <span>{formatClock(videoDuration)}</span>
+                <div className="flex items-center gap-2">
+                  <span>{formatClock(timelineTime)}</span>
+                  <span>/</span>
+                  <span>{formatClock(videoDuration)}</span>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (playerRef.current) {
+                      const currentTime = playerRef.current.getCurrentTime?.() || 0;
+                      await pushPlayback({ currentTimestamp: currentTime });
+                      pushToast("Synced everyone's timeline to you.", "success");
+                    }
+                  }}
+                  className="rounded-full bg-cyan-400/20 px-3 py-1 text-[11px] text-cyan-200 transition hover:bg-cyan-400/30"
+                  disabled={!canSeekTimeline || roomClosing}
+                >
+                  Sync Timeline
+                </button>
               </div>
               <input
                 type="range"
