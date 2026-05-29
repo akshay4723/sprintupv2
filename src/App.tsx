@@ -307,7 +307,7 @@ function TheaterRoom({ pulse, theme }: { pulse: number; theme: "luxury" | "horro
         <boxGeometry args={[9.8, 4.9, 0.26]} />
         <meshStandardMaterial color={themePalette.back} metalness={0.35} roughness={0.45} />
       </mesh>
-      <mesh ref={screenRef} position={[0, 1.7, -4.2]}>
+      <mesh ref={screenRef} position={[-1, 1.7, -7.2]}>
         <boxGeometry args={[7.2, 3.2, 0.08]} />
         <meshStandardMaterial color="#90e8ff" emissive="#39cfff" />
       </mesh>
@@ -365,7 +365,7 @@ function TheaterViewerCamera({ seatIndex }: { seatIndex: number }) {
 
   useEffect(() => {
     camera.position.set(seat.x, 0.78, seat.z + 0.45);
-    camera.lookAt(0, 1.6, -4.2);
+    camera.lookAt(-1, 1.6, -7.2);
     yawRef.current = camera.rotation.y;
     pitchRef.current = camera.rotation.x;
   }, [camera, seatIndex]);
@@ -2358,7 +2358,7 @@ function WatchRoom({ me }: { me: AppUser }) {
             <TheaterRoom pulse={theaterPulse} theme={theatreTheme} />
             <TheaterRoomAvatars participants={orderedParticipants} hostId={roomDoc?.hostId} />
             <PaperBurstsLayer bursts={paperBursts} seatMap={seatMapByUid} />
-            <Html transform position={[0, 1.7, -4.35]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
+            <Html transform position={[-1, 1.7, -7.35]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
               <div className="pointer-events-none w-[760px] overflow-hidden border border-cyan-200/40 shadow-[0_0_30px_rgba(57,207,255,0.3)]">
                 {currentSource === "upload" ? (
                   <video
@@ -2953,7 +2953,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                   {uploadingVideo ? `Uploading... ${uploadProgress}%` : "Upload Video"}
                   <input
                     type="file"
-                    accept="video/mp4,video/webm,video/ogg"
+                    accept="video/*,video/mp4,video/webm,video/ogg,video/x-matroska,.mkv,.avi,.mov"
                     className="hidden"
                     disabled={uploadingVideo || !canLoadVideo}
                     onChange={(event) => {
