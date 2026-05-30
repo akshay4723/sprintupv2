@@ -1541,8 +1541,10 @@ function WatchRoom({ me }: { me: AppUser }) {
   const [videoDuration, setVideoDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
   const [showAudioHelp, setShowAudioHelp] = useState(false);
+  const [audioNeedsInteraction, setAudioNeedsInteraction] = useState(false);
   const navigate = useNavigate();
   const playerRef = useRef<any>(null);
+  const rawVideoRef = useRef<HTMLVideoElement | null>(null);
   const appliedEventRef = useRef<string>("");
   const suppressStateRef = useRef(false);
   const inputDirtyRef = useRef(false);
@@ -2080,6 +2082,29 @@ function WatchRoom({ me }: { me: AppUser }) {
     return () => window.clearInterval(timer);
   }, [isSeeking, videoId]);
 
+  useEffect(() => {
+    const handleGlobalInteraction = () => {
+      if (rawVideoRef.current) {
+        rawVideoRef.current.muted = false;
+        rawVideoRef.current.volume = 1.0;
+        if (audioNeedsInteraction) {
+          setAudioNeedsInteraction(false);
+          if (roomState?.playbackState === "playing") {
+            rawVideoRef.current.play().catch(() => null);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("click", handleGlobalInteraction, { capture: true, passive: true });
+    window.addEventListener("touchstart", handleGlobalInteraction, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener("click", handleGlobalInteraction, { capture: true });
+      window.removeEventListener("touchstart", handleGlobalInteraction, { capture: true });
+    };
+  }, [audioNeedsInteraction, roomState?.playbackState]);
+
   const pushPlayback = async (patch: Record<string, unknown>) => {
     if (!canControlPlayback || !roomId || !playerRef.current || roomClosing) {
       return;
@@ -2351,17 +2376,30 @@ function WatchRoom({ me }: { me: AppUser }) {
     if (!videoElement) {
       return;
     }
-    // Ensure the video is explicitly unmuted and volume is set to audible
+    rawVideoRef.current = videoElement;
+
+    // Actively assert unmuted audio context
     videoElement.muted = false;
     videoElement.volume = 1.0;
+
+    const testPlay = () => {
+      videoElement.muted = false;
+      videoElement.volume = 1.0;
+      const promise = videoElement.play();
+      if (promise !== undefined) {
+        promise.catch((error) => {
+          if (error.name === "NotAllowedError") {
+            setAudioNeedsInteraction(true);
+          }
+        });
+      }
+    };
 
     playerRef.current = {
       getCurrentTime: () => videoElement.currentTime || 0,
       getDuration: () => videoElement.duration || 0,
       playVideo: () => {
-        videoElement.muted = false;
-        videoElement.volume = 1.0;
-        void videoElement.play();
+        testPlay();
       },
       pauseVideo: () => videoElement.pause(),
       seekTo: (time: number) => {
@@ -2410,7 +2448,26 @@ function WatchRoom({ me }: { me: AppUser }) {
             <TheaterRoomAvatars participants={orderedParticipants} hostId={roomDoc?.hostId} />
             <PaperBurstsLayer bursts={paperBursts} seatMap={seatMapByUid} />
             <Html transform position={[-1, 1.7, -7.35]} rotation={[0, 0, 0]} distanceFactor={6.2} zIndexRange={[5, 0]}>
-              <div className="pointer-events-none w-[760px] overflow-hidden border border-cyan-200/40 shadow-[0_0_30px_rgba(57,207,255,0.3)]">
+              <div className="pointer-events-auto relative w-[760px] overflow-hidden border border-cyan-200/40 shadow-[0_0_30px_rgba(57,207,255,0.3)]">
+                {audioNeedsInteraction && (
+                  <button
+                    onClick={() => {
+                      if (rawVideoRef.current) {
+                        rawVideoRef.current.muted = false;
+                        rawVideoRef.current.volume = 1.0;
+                        setAudioNeedsInteraction(false);
+                        if (roomState?.playbackState === "playing") {
+                          rawVideoRef.current.play().catch(() => null);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm"
+                  >
+                    <span className="rounded-full border border-cyan-300/40 bg-cyan-400/20 px-6 py-3 text-lg font-semibold text-cyan-200 shadow-xl transition hover:bg-cyan-400/30">
+                      🔊 Click to Enable Sound
+                    </span>
+                  </button>
+                )}
                 {currentSource === "upload" ? (
                   <video
                     src={currentVideoUrl}
@@ -2825,6 +2882,25 @@ function WatchRoom({ me }: { me: AppUser }) {
 
           <section className="relative rounded-3xl border border-white/10 bg-black/50 p-3 shadow-[0_0_60px_rgba(61,122,255,0.35)]">
             <div className="relative overflow-hidden rounded-2xl border border-white/10">
+              {audioNeedsInteraction && (
+                <button
+                  onClick={() => {
+                    if (rawVideoRef.current) {
+                      rawVideoRef.current.muted = false;
+                      rawVideoRef.current.volume = 1.0;
+                      setAudioNeedsInteraction(false);
+                      if (roomState?.playbackState === "playing") {
+                        rawVideoRef.current.play().catch(() => null);
+                      }
+                    }
+                  }}
+                  className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm"
+                >
+                  <span className="rounded-full border border-cyan-300/40 bg-cyan-400/20 px-6 py-3 text-lg font-semibold text-cyan-200 shadow-xl transition hover:bg-cyan-400/30">
+                    🔊 Click to Enable Sound
+                  </span>
+                </button>
+              )}
               <div className="relative z-10">
                 {currentSource === "upload" ? (
                   <video
