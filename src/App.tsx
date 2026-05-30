@@ -1540,6 +1540,7 @@ function WatchRoom({ me }: { me: AppUser }) {
   const [timelineTime, setTimelineTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [showAudioHelp, setShowAudioHelp] = useState(false);
   const navigate = useNavigate();
   const playerRef = useRef<any>(null);
   const appliedEventRef = useRef<string>("");
@@ -2562,8 +2563,32 @@ function WatchRoom({ me }: { me: AppUser }) {
         <div data-ui-overlay="true" className="pointer-events-auto fixed inset-x-4 bottom-4 z-[500] flex flex-col gap-3 sm:inset-x-6">
           {!theaterHudCollapsed && (
             <div className="rounded-2xl border border-white/20 bg-black/25 px-4 py-3 backdrop-blur-sm">
+            {showAudioHelp && currentSource === "upload" && (
+              <div className="mb-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs text-amber-100 backdrop-blur-md">
+                <div className="flex items-center justify-between font-semibold text-amber-200">
+                  <span>⚠️ Browser Audio Codec Compatibility</span>
+                  <button onClick={() => setShowAudioHelp(false)} className="text-white/70 hover:text-white">✕</button>
+                </div>
+                <p className="mt-1">
+                  MKV files encoded with cinema audio formats like <b>AC3 (Dolby Digital)</b> or <b>DTS</b> cannot be decoded by web browsers natively due to licensing restrictions. The video will stream perfectly, but the audio will be completely silent.
+                </p>
+                <p className="mt-1 font-medium text-cyan-200">
+                  💡 Fix: Use free desktop tools like Handbrake or VLC to convert the movie's audio track to AAC or MP3, or upload an MP4/WEBM file.
+                </p>
+              </div>
+            )}
             <div className="mb-2 flex items-center justify-between text-xs text-white/75">
-              <span>{currentSource === "upload" ? roomState?.currentVideoTitle || "Uploaded Video" : "YouTube"}</span>
+              <div className="flex items-center gap-2">
+                <span>{currentSource === "upload" ? roomState?.currentVideoTitle || "Uploaded Video" : "YouTube"}</span>
+                {currentSource === "upload" && (
+                  <button
+                    onClick={() => setShowAudioHelp((prev) => !prev)}
+                    className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-200 transition hover:bg-amber-400/30"
+                  >
+                    No Audio?
+                  </button>
+                )}
+              </div>
               <span>
                 {formatClock(timelineTime)} / {formatClock(videoDuration)}
               </span>
@@ -2918,8 +2943,32 @@ function WatchRoom({ me }: { me: AppUser }) {
             </div>
 
             <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              {showAudioHelp && currentSource === "upload" && (
+                <div className="mb-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs text-amber-100 backdrop-blur-md">
+                  <div className="flex items-center justify-between font-semibold text-amber-200">
+                    <span>⚠️ Browser Audio Codec Compatibility</span>
+                    <button onClick={() => setShowAudioHelp(false)} className="text-white/70 hover:text-white">✕</button>
+                  </div>
+                  <p className="mt-1">
+                    MKV files encoded with cinema audio formats like <b>AC3 (Dolby Digital)</b> or <b>DTS</b> cannot be decoded by web browsers natively due to licensing restrictions. The video will stream perfectly, but the audio will be completely silent.
+                  </p>
+                  <p className="mt-1 font-medium text-cyan-200">
+                    💡 Fix: Use free desktop tools like Handbrake or VLC to convert the movie's audio track to AAC or MP3, or upload an MP4/WEBM file.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs text-white/70">
                 <div className="flex items-center gap-2">
+                  <span>{currentSource === "upload" ? roomState?.currentVideoTitle || "Uploaded Video" : "YouTube"}</span>
+                  {currentSource === "upload" && (
+                    <button
+                      onClick={() => setShowAudioHelp((prev) => !prev)}
+                      className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] text-amber-200 transition hover:bg-amber-400/30"
+                    >
+                      No Audio?
+                    </button>
+                  )}
+                  <span className="text-white/40">|</span>
                   <span>{formatClock(timelineTime)}</span>
                   <span>/</span>
                   <span>{formatClock(videoDuration)}</span>
