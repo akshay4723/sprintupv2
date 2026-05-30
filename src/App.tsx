@@ -2350,10 +2350,16 @@ function WatchRoom({ me }: { me: AppUser }) {
     if (!videoElement) {
       return;
     }
+    // Ensure the video is explicitly unmuted and volume is set to audible
+    videoElement.muted = false;
+    videoElement.volume = 1.0;
+
     playerRef.current = {
       getCurrentTime: () => videoElement.currentTime || 0,
       getDuration: () => videoElement.duration || 0,
       playVideo: () => {
+        videoElement.muted = false;
+        videoElement.volume = 1.0;
         void videoElement.play();
       },
       pauseVideo: () => videoElement.pause(),
@@ -2801,6 +2807,7 @@ function WatchRoom({ me }: { me: AppUser }) {
                     className="h-[420px] w-full bg-black object-contain"
                     ref={bindHtmlVideoPlayer}
                     playsInline
+                    controls
                     onLoadedMetadata={(event) => {
                       bindHtmlVideoPlayer(event.currentTarget);
                       setVideoDuration(event.currentTarget.duration || 0);
